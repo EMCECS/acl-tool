@@ -10,6 +10,7 @@ import com.emc.object.s3.request.SetObjectAclRequest;
 import com.emc.object.util.ConfigUri;
 import com.emc.object.util.RestUtil;
 import org.apache.commons.cli.*;
+import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Created by cwikj on 10/4/16.
  */
 public class AclTool {
+    private static final Logger log = Logger.getLogger(AclTool.class);
     private static final int DEFAULT_THREADS = 32;
     private static final int QUEUE_SIZE = 2000;
 
@@ -47,11 +49,14 @@ public class AclTool {
         boolean debug = false;
         AclTool aclTool = null;
         try {
-            CommandLine line = new DefaultParser().parse(options(), args, true);
+            CommandLine line = null;
 
-            if (line.hasOption("h")) {
+            try {
+                line = new DefaultParser().parse(options(), args, true);
+            } catch(Exception e) {
+                System.err.println("Error: " + e.getMessage());
                 printHelp();
-                System.exit(1);
+                System.exit(-1);
             }
 
             aclTool = new AclTool();
@@ -151,9 +156,9 @@ public class AclTool {
             System.out.println("Total Objects updated: " + tool.getUpdatedObjects());
             System.out.println(String.format("Duration: %d secs (%.2f/s)", duration / 1000, xput));
 
-            for (String error : aclTool.getErrors()) {
-                System.out.println("Error: " + error);
-            }
+//            for (String error : aclTool.getErrors()) {
+//                System.out.println("Error: " + error);
+//            }
 
             System.exit(0);
 
@@ -247,16 +252,17 @@ public class AclTool {
                 .desc("Applies a canned ACL to the objects.  Cannot be used with other ACL options.  Valid values: " +
                         "private | public-read | public-read-write | authenticated-read | bucket-owner-read | " +
                         "bucket-owner-full-control").build());
-        opts.addOption(Option.builder().longOpt(OPT_FULL_CONTROL_USERS).hasArg().argName("user, user, ...")
+        opts.addOption(Option.builder().longOpt(OPT_FULL_CONTROL_USERS).hasArg().argName("user1 user2 ...")
+                .numberOfArgs(Option.UNLIMITED_VALUES)
                 .desc("Sets a list of users that have full control over the objects.  The special groups " +
                         "AuthenticatedUsers or AllUsers may also be used.").build());
-        opts.addOption(Option.builder().longOpt(OPT_READ_USERS).hasArg().argName("user, user, ...")
+        opts.addOption(Option.builder().longOpt(OPT_READ_USERS).hasArg().argName("user1 user2 ...")
+                .numberOfArgs(Option.UNLIMITED_VALUES)
                 .desc("Sets a list of users that have read access to the objects. The special groups " +
                         "AuthenticatedUsers or AllUsers may also be used.").build());
         opts.addOption(Option.builder().longOpt(OPT_DEBUG).desc("Print extra debug information").build());
         opts.addOption(Option.builder().longOpt(OPT_USE_SMART_CLIENT)
                 .desc("Enable the smart client (client-side load balancer)").build());
-
         return opts;
     }
 
@@ -378,7 +384,12 @@ public class AclTool {
             } else {
                 req.setAcl(acl);
             }
-            client.setObjectAcl(req);
+            try {
+                client.setObjectAcl(req);
+            } catch(Exception e) {
+                log.warn("Error updating " + key + ": " + e.getMessage());
+                throw e;
+            }
             updatedObjects.incrementAndGet();
         }
     }
